@@ -125,8 +125,8 @@ public class Server {
 	public static void getQueryParams(String parameters, String method, Charset charset) {
 		try {
 			List<NameValuePair> result = URLEncodedUtils.parse(new URI(parameters), String.valueOf(charset));
-			System.out.println("[" + date + "]: " + method);
-			System.out.println("request path: " + parameters);
+			System.out.println(date + ": " + method);
+			System.out.println("запрос: " + parameters);
 			for (NameValuePair nvp : result) {
 				System.out.println(nvp);
 			}
