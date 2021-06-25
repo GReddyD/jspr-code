@@ -5,6 +5,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -15,92 +16,83 @@ import java.util.concurrent.Executors;
 
 public class Server {
 	private static final int SERVER_PORT = 44444;
-	ExecutorService execServer = Executors.newFixedThreadPool(64);
-	ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<>();
+	ExecutorService execServer;
 
-	protected void startServer() {
-		try {
-			ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
-			System.out.println("Запуск сервера");
-			upServer(serverSocket);
-			System.out.println("Сервер запущен");
+	public Server(int threadPoolSize) {
+		this.execServer = Executors.newFixedThreadPool(threadPoolSize);
+	}
+
+	protected void listen() {
+		try (final var serverSocket = new ServerSocket(SERVER_PORT)) {
+			while (true) {
+				var clientSocket = serverSocket.accept();
+				execServer.submit(() -> upServer(clientSocket));
+			}
 		} catch (IOException err) {
 			err.printStackTrace();
 		}
 	}
 
-	private void upServer(ServerSocket serverSocket) {
+	private void upServer(Socket serverSocket) {
 		final var validPaths = List.of("/index.html", "/spring.svg", "/spring.png", "/resources.html",
 						"/styles.css", "/app.js", "/links.html", "/forms.html", "/classic.html", "/events.html", "/events.js");
-		execServer.execute(() -> {
-			while (true) {
-				while (!Thread.currentThread().isInterrupted()) {
-					if (!queue.isEmpty()) {
-						try (
-										final var socket = serverSocket.accept();
-										final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-										final var out = new BufferedOutputStream(socket.getOutputStream());
-						) {
-							// read only request line for simplicity
-							// must be in form GET /path HTTP/1.1
-							final var requestLine = in.readLine();
-							final var parts = requestLine.split(" ");
+		try (
+						serverSocket;
+						final var in = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
+						final var out = new BufferedOutputStream(serverSocket.getOutputStream());
+		) {
+			// read only request line for simplicity
+			// must be in form GET /path HTTP/1.1
+			final var requestLine = in.readLine();
+			final var parts = requestLine.split(" ");
 
-							if (parts.length != 3) {
-								// just close socket
-								continue;
-							}
+			// just close socket
+			if (parts.length != 3) return;
 
-							final var path = parts[1];
-							if (!validPaths.contains(path)) {
-								out.write((
-												"HTTP/1.1 404 Not Found\r\n" +
-																"Content-Length: 0\r\n" +
-																"Connection: close\r\n" +
-																"\r\n"
-								).getBytes());
-								out.flush();
-								continue;
-							}
-
-							final var filePath = Path.of(".", "public", path);
-							final var mimeType = Files.probeContentType(filePath);
-
-							// special case for classic
-							if (path.equals("/classic.html")) {
-								final var template = Files.readString(filePath);
-								final var content = template.replace(
-												"{time}",
-												LocalDateTime.now().toString()
-								).getBytes();
-								out.write((
-												"HTTP/1.1 200 OK\r\n" +
-																"Content-Type: " + mimeType + "\r\n" +
-																"Content-Length: " + content.length + "\r\n" +
-																"Connection: close\r\n" +
-																"\r\n"
-								).getBytes());
-								out.write(content);
-								out.flush();
-								continue;
-							}
-
-							final var length = Files.size(filePath);
-							out.write((
-											"HTTP/1.1 200 OK\r\n" +
-															"Content-Type: " + mimeType + "\r\n" +
-															"Content-Length: " + length + "\r\n" +
-															"Connection: close\r\n" +
-															"\r\n"
-							).getBytes());
-							Files.copy(filePath, out);
-							out.flush();
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
-				}
+			final var path = parts[1];
+			if (!validPaths.contains(path)) {
+				out.write((
+								"HTTP/1.1 404 Not Found\r\n" +
+												"Content-Length: 0\r\n" +
+												"Connection: close\r\n" +
+												"\r\n"
+				).getBytes());
+				out.flush();
 			}
-		});
+
+			final var filePath = Path.of(".", "public", path);
+			final var mimeType = Files.probeContentType(filePath);
+
+			// special case for classic
+			if (path.equals("/classic.html")) {
+				final var template = Files.readString(filePath);
+				final var content = template.replace(
+								"{time}",
+								LocalDateTime.now().toString()
+				).getBytes();
+				out.write((
+								"HTTP/1.1 200 OK\r\n" +
+												"Content-Type: " + mimeType + "\r\n" +
+												"Content-Length: " + content.length + "\r\n" +
+												"Connection: close\r\n" +
+												"\r\n"
+				).getBytes());
+				out.write(content);
+				out.flush();
+			}
+
+			final var length = Files.size(filePath);
+			out.write((
+							"HTTP/1.1 200 OK\r\n" +
+											"Content-Type: " + mimeType + "\r\n" +
+											"Content-Length: " + length + "\r\n" +
+											"Connection: close\r\n" +
+											"\r\n"
+			).getBytes());
+			Files.copy(filePath, out);
+			out.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 }
