@@ -8,6 +8,7 @@ import java.util.List;
 
 public class PostService {
   private final PostRepository repository;
+  public static long POST_ID = 0;
 
   public PostService(PostRepository repository) {
     this.repository = repository;
