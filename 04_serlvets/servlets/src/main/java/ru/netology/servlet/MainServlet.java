@@ -23,7 +23,7 @@ public class MainServlet extends HttpServlet {
     // OLD //
 
     final var context = new AnnotationConfigApplicationContext(ru.netology.config.JavaConfig.class);
-
+    controller = context.getBean(PostController.class);
   }
 
   @Override
